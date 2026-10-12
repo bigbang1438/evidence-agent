@@ -1,0 +1,13 @@
+[project]
+name = "evidence-agent"
+version = "0.1.0"
+description = "Local evidence-grounded assistant with explicit task approval"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

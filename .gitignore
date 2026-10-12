@@ -1,0 +1,17 @@
+runtime/
+my-data/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.db
+*.db-wal
+*.db-shm
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db
