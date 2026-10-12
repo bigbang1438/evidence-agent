@@ -14,7 +14,7 @@ cd evidence-agent
 python -m evidence_agent.server
 ```
 
-浏览器访问 **http://127.0.0.1:8788**。首次启动会导入 `samples/` 中的两份原创示例文档。数据写入 `runtime/state.db`，运行数据不提交到仓库。
+浏览器访问 [http://127.0.0.1:8788](http://127.0.0.1:8788)。首次启动会导入 `samples/` 中的两份原创示例文档。数据写入 `runtime/state.db`，运行数据不提交到仓库。
 
 可修改端口或使用独立数据目录：
 
