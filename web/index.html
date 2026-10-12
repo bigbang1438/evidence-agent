@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Evidence Agent · 本地知识助手</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Evidence Agent 首页"><span class="brand-mark" aria-hidden="true">E<span>]</span></span><span>Evidence Agent<small>本地知识助手</small></span></a>
+    <div class="mode-control"><label for="mode">回答方式</label><select id="mode"><option value="demo">演示模式</option><option value="ollama" disabled>本地 Ollama（未配置）</option></select><span class="local-tag"><span aria-hidden="true"></span>资料留在本机</span></div>
+  </header>
+  <main class="workspace">
+    <aside class="library panel" aria-labelledby="library-heading">
+      <div class="section-top"><h2 id="library-heading">资料库</h2><span id="document-count" class="count">0</span></div>
+      <p class="muted">导入资料后，回答会附上原文与行号。</p>
+      <div class="upload-area"><span class="file-symbol" aria-hidden="true">＋</span><p>Markdown 或 TXT</p><small>每个文件不超过 256 KiB</small><button id="upload-button" class="button secondary" type="button">选择资料</button><input id="file-input" type="file" accept=".md,.txt,text/plain,text/markdown" hidden></div>
+      <p id="upload-status" class="status-text" role="status"></p>
+      <ul id="documents" class="document-list" aria-label="已导入资料"></ul>
+      <div class="library-note"><strong>资料使用边界</strong><p>仅解析文本，不执行文档中的指令。不读取文档中的网址，也不调用任意外部工具。</p></div>
+    </aside>
+    <section class="main-column" aria-labelledby="workspace-heading">
+      <div class="workspace-intro"><span class="evidence-label">证据 → 回答 → 确认</span><h1 id="workspace-heading">让答案有出处，<br>让操作可确认。</h1><p>从你的资料中寻找线索，再决定下一步。</p></div>
+      <div class="mode-note" id="mode-note"><span class="note-dot" aria-hidden="true"></span><p>演示模式按固定规则检索与编排，不是大模型推理。</p></div>
+      <form id="question-form" class="question-box">
+        <label for="question">你想了解什么？</label>
+        <textarea id="question" rows="3" maxlength="2000" required placeholder="例如：工具调用有哪些安全边界？"></textarea>
+        <div class="suggestions" aria-label="示例问题"><button type="button" data-question="工具调用有哪些安全边界？">工具调用的安全边界</button><button type="button" data-question="BM25 与向量检索有什么区别？">BM25 与向量检索</button></div>
+        <details class="draft-task"><summary>同时提出一条待办（可选）</summary><div><label for="task-title">待办标题</label><input id="task-title" maxlength="120" placeholder="例如：补充工具调用的权限检查"><p class="muted">这里只提出请求，确认后才会写入任务列表。</p></div></details>
+        <div class="question-actions"><span id="question-count">0 / 2000</span><button id="ask-button" class="button primary" type="submit">检索并回答 <span aria-hidden="true">↗</span></button></div>
+      </form>
+      <p id="global-status" class="global-status" role="status"></p>
+      <section class="answer-panel panel" aria-labelledby="answer-heading"><div class="section-top"><h2 id="answer-heading">回答与证据</h2><span id="run-meta" class="muted"></span></div><div id="answer" class="answer-text" aria-live="polite"><div class="empty-answer"><span aria-hidden="true">[ ]</span><p>先提出一个问题</p><small>检索结果、原文出处与执行步骤会显示在这里。</small></div></div><div id="citations" class="citations"></div></section>
+    </section>
+    <aside class="activity-column" aria-label="执行与任务">
+      <section class="panel execution-panel" aria-labelledby="execution-heading"><div class="section-top"><h2 id="execution-heading">执行轨迹</h2><span id="step-count" class="count">0</span></div><p class="muted">每个工具调用都有可查看的结果。</p><ol id="steps" class="steps"><li class="empty-line">等待一次提问。</li></ol></section>
+      <section class="panel approval-panel" aria-labelledby="approval-heading"><div class="section-top"><h2 id="approval-heading">待你确认</h2><span id="approval-count" class="count">0</span></div><div id="approvals"><p class="empty-line">没有待确认操作。</p></div></section>
+      <section class="panel task-panel" aria-labelledby="tasks-heading"><div class="section-top"><h2 id="tasks-heading">已确认任务</h2><span id="task-count" class="count">0</span></div><ul id="tasks" class="task-list"><li class="empty-line">确认后创建的任务会保存在这里。</li></ul><p class="task-footnote">SQLite 持久化保存，刷新后仍保留。</p></section>
+    </aside>
+  </main>
+  <footer>开源学习项目 · 本地运行 · 不调用收费云端服务</footer>
+</body>
+</html>
