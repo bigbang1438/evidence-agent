@@ -1,8 +1,9 @@
 'use strict';
 
-const ui = Object.fromEntries(['mode', 'mode-note', 'document-count', 'documents', 'upload-button', 'file-input', 'upload-status', 'question-form', 'question', 'question-count', 'task-title', 'ask-button', 'global-status', 'answer', 'citations', 'run-meta', 'steps', 'step-count', 'approvals', 'approval-count', 'tasks', 'task-count'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['mode', 'mode-note', 'document-count', 'documents', 'upload-button', 'file-input', 'upload-status', 'question-form', 'question', 'question-count', 'task-title', 'ask-button', 'global-status', 'answer', 'citations', 'run-meta', 'steps', 'step-count', 'approvals', 'approval-count', 'tasks', 'task-count', 'conversations', 'new-conversation', 'conversation-title', 'turn-count', 'turns'].map(id => [id, document.getElementById(id)]));
 let csrfToken = '';
 let asking = false;
+let conversationId = localStorage.getItem('evidence-conversation-id') || '';
 
 function node(tag, className, text) {
   const element = document.createElement(tag);
@@ -18,7 +19,7 @@ function setStatus(element, message, error = false) {
 
 async function api(path, body) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
+  const timer = setTimeout(() => controller.abort(), 120000);
   try {
     const response = await fetch(path, {
       method: body === undefined ? 'GET' : 'POST',
@@ -80,7 +81,7 @@ function renderApprovals(approvals) {
       button.addEventListener('click', async () => {
         actions.querySelectorAll('button').forEach(control => { control.disabled = true; });
         try {
-          await api(`/api/approvals/${encodeURIComponent(approval.id)}`, { approved });
+          await api(`/api/approvals/${encodeURIComponent(approval.id)}`, { approved, conversation_id: conversationId });
           setStatus(ui['global-status'], approved ? '任务已创建并保存。' : '已放弃该任务。');
           await refreshState();
         } catch (error) {
@@ -100,14 +101,74 @@ async function refreshState() {
   csrfToken = state.csrf_token;
   renderDocuments(state.documents);
   renderTasks(state.tasks);
-  renderApprovals(state.pending_approvals);
+  renderConversations(state.conversations);
+  renderApprovals(state.pending_approvals.filter(item => item.conversation_id === conversationId));
   const modelOption = ui['mode'].querySelector('option[value="ollama"]');
   modelOption.disabled = !state.ollama_available;
   modelOption.textContent = state.ollama_available ? '本地 Ollama（已配置）' : '本地 Ollama（未配置）';
   if (!state.ollama_available) ui['mode'].value = 'demo';
 }
 
-const toolLabels = { knowledge_search: '检索资料', task_list: '读取任务', task_create: '等待你的确认', ollama_answer: '本地模型回答' };
+function renderConversations(conversations) {
+  ui['conversations'].replaceChildren();
+  if (!conversations.some(item => item.id === conversationId)) conversationId = '';
+  for (const item of conversations) {
+    const row = node('li');
+    const button = node('button', `conversation-button${item.id === conversationId ? ' active' : ''}`, item.title);
+    button.type = 'button';
+    button.append(node('small', '', `${item.turns} 轮 · ${new Date(item.created_at).toLocaleDateString('zh-CN')}`));
+    button.addEventListener('click', async () => {
+      if (asking) return;
+      try {
+        conversationId = item.id;
+        localStorage.setItem('evidence-conversation-id', conversationId);
+        await loadConversation();
+        await refreshState();
+      } catch (error) { setStatus(ui['global-status'], error.message, true); }
+    });
+    row.append(button);
+    ui['conversations'].append(row);
+  }
+  if (!conversations.length) ui['conversations'].append(node('li', 'empty-line', '提问后会自动保存会话。'));
+}
+
+async function loadConversation() {
+  if (!conversationId) return;
+  const thread = await api(`/api/conversations/${encodeURIComponent(conversationId)}`);
+  ui['conversation-title'].textContent = thread.title;
+  ui['turn-count'].textContent = `${thread.runs.length} 轮`;
+  ui['turns'].replaceChildren();
+  for (const [index, run] of thread.runs.entries()) {
+    const row = node('li');
+    const button = node('button', 'turn-button', `第 ${index + 1} 轮 · ${run.question}`);
+    button.type = 'button';
+    button.addEventListener('click', () => renderRun(run));
+    row.append(button, node('p', '', run.answer.slice(0, 220)));
+    ui['turns'].append(row);
+  }
+  if (thread.runs.length) renderRun(thread.runs[thread.runs.length - 1]);
+}
+
+ui['new-conversation'].addEventListener('click', () => {
+  if (asking) return;
+  conversationId = '';
+  localStorage.removeItem('evidence-conversation-id');
+  ui['conversation-title'].textContent = '新会话';
+  ui['turn-count'].textContent = '0 轮';
+  ui['turns'].replaceChildren();
+  ui['answer'].textContent = '先提出一个问题';
+  ui['citations'].replaceChildren();
+  ui['steps'].replaceChildren();
+  renderApprovals([]);
+  ui['step-count'].textContent = '0';
+  ui['run-meta'].textContent = '';
+  ui['question'].value = '';
+  ui['question-count'].textContent = '0 / 2000';
+  setStatus(ui['global-status'], '已开启新会话，历史会话仍可从左侧查看。');
+  ui['question'].focus();
+});
+
+const toolLabels = { knowledge_search: '检索资料', task_list: '读取任务', task_create: '等待你的确认', model_plan: '模型规划 / 回答' };
 function renderRun(run) {
   ui['answer'].textContent = run.answer;
   ui['run-meta'].textContent = `${run.mode === 'demo' ? '演示' : 'Ollama'} · ${run.elapsed_ms} ms`;
@@ -123,6 +184,11 @@ function renderRun(run) {
     const item = node('li');
     const pending = step.status === 'awaiting_confirmation';
     item.append(node('span', `step-mark${pending ? ' pending' : ''}`, pending ? '!' : '✓'), node('strong', '', toolLabels[step.tool] || step.tool), node('p', '', step.summary), node('small', '', `${step.tool} · ${step.duration_ms} ms`));
+    if (step.arguments !== undefined || step.observation !== undefined) {
+      const detail = node('details', 'trace-detail');
+      detail.append(node('summary', '', '查看输入与工具反馈'), node('pre', '', JSON.stringify({ call_id: step.call_id, arguments: step.arguments, observation: step.observation }, null, 2)));
+      item.append(detail);
+    }
     ui['steps'].append(item);
   }
 }
@@ -157,7 +223,7 @@ document.querySelectorAll('[data-question]').forEach(button => button.addEventLi
   ui['question'].focus();
 }));
 ui['mode'].addEventListener('change', () => {
-  ui['mode-note'].querySelector('p').textContent = ui['mode'].value === 'demo' ? '演示模式按固定规则检索与编排，不是大模型推理。' : '本地模型会基于检索片段生成答案，请逐条核对引用；模型不能审批或执行写操作。';
+  ui['mode-note'].querySelector('p').textContent = ui['mode'].value === 'demo' ? '演示模式按固定规则检索与编排，不是大模型推理。' : '本地模型自主选择白名单工具，读取反馈后继续回答；创建待办仅提出请求，仍需你单独确认。';
 });
 ui['question-form'].addEventListener('submit', async event => {
   event.preventDefault();
@@ -168,15 +234,20 @@ ui['question-form'].addEventListener('submit', async event => {
   ui['ask-button'].disabled = true;
   ui['ask-button'].textContent = '正在检索…';
   ui['mode'].disabled = true;
+  ui['new-conversation'].disabled = true;
   setStatus(ui['global-status'], '正在读取资料与执行计划…');
   const body = { question, mode: ui['mode'].value };
+  if (conversationId) body.conversation_id = conversationId;
   const title = ui['task-title'].value.trim();
   if (title) body.draft_task_title = title;
   try {
     const run = await api('/api/runs', body);
+    conversationId = run.conversation_id;
+    localStorage.setItem('evidence-conversation-id', conversationId);
     renderRun(run);
     setStatus(ui['global-status'], run.pending_approval ? '回答已完成，待办还需要你确认。' : '回答已完成，可展开引用查看原文。');
     await refreshState();
+    await loadConversation();
     ui['task-title'].value = '';
   } catch (error) {
     setStatus(ui['global-status'], error.message, true);
@@ -185,9 +256,10 @@ ui['question-form'].addEventListener('submit', async event => {
     ui['ask-button'].disabled = false;
     ui['ask-button'].textContent = '检索并回答 ↗';
     ui['mode'].disabled = false;
+    ui['new-conversation'].disabled = false;
   }
 });
-refreshState().catch(error => {
+refreshState().then(loadConversation).catch(error => {
   setStatus(ui['global-status'], `无法连接本地服务：${error.message}`, true);
   ui['ask-button'].disabled = true;
   ui['upload-button'].disabled = true;
