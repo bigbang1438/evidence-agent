@@ -40,6 +40,35 @@ class OllamaAdapter:
         self.base_url, self.model = base_url.rstrip("/"), model
         self.opener = build_opener(ProxyHandler({}), NoRedirects())
 
+    def chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], timeout: float) -> dict[str, Any]:
+        """Return the documented tool-call message, never hidden model thinking."""
+        payload = {"model": self.model, "stream": False, "think": False, "messages": messages, "tools": tools,
+                   "options": {"temperature": 0, "num_predict": 512, "num_ctx": 8192}}
+        request = Request(self.base_url + "/api/chat", data=json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with self.opener.open(request, timeout=max(0.1, min(timeout, 120))) as response:
+                body = response.read(65537)
+            if len(body) > 65536:
+                raise ModelError("本地模型响应过大。")
+            data = json.loads(body, parse_constant=lambda _v: (_ for _ in ()).throw(ValueError()))
+            message = data.get("message") if isinstance(data, dict) else None
+            if not isinstance(message, dict):
+                raise ModelError("本地模型响应格式无效。")
+            content, calls = message.get("content", ""), message.get("tool_calls", []) or []
+            if not isinstance(content, str) or len(content) > 16000 or not isinstance(calls, list) or len(calls) > 4 or (not content.strip() and not calls):
+                raise ModelError("本地模型响应格式无效。")
+            clean = []
+            for call in calls:
+                function = call.get("function") if isinstance(call, dict) else None
+                if not isinstance(function, dict) or not isinstance(function.get("name"), str) or not isinstance(function.get("arguments"), dict):
+                    raise ModelError("本地模型工具参数格式无效。")
+                clean.append({"function": {"name": function["name"], "arguments": function["arguments"]}})
+            return {"role": "assistant", "content": content, "tool_calls": clean}
+        except (HTTPError, URLError, TimeoutError, socket.timeout, OSError) as exc:
+            raise ModelError("本地模型未响应，请检查 Ollama 与模型配置。") from exc
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise ModelError("本地模型响应格式无效。") from exc
+
     def answer(self, question: str, citations: list[dict[str, Any]], timeout: float) -> str:
         evidence = "\n\n".join(
             f"[{i}] {item['filename']}:{item['line_start']}-{item['line_end']}\n{item['text']}"
