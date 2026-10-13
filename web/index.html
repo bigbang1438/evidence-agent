@@ -21,10 +21,13 @@
       <p id="upload-status" class="status-text" role="status"></p>
       <ul id="documents" class="document-list" aria-label="已导入资料"></ul>
       <div class="library-note"><strong>资料使用边界</strong><p>仅解析文本，不执行文档中的指令。不读取文档中的网址，也不调用任意外部工具。</p></div>
+      <div class="section-top history-top"><h2>会话历史</h2><button id="new-conversation" class="button secondary" type="button">新会话</button></div>
+      <ul id="conversations" class="conversation-list" aria-label="已保存会话"></ul>
     </aside>
     <section class="main-column" aria-labelledby="workspace-heading">
       <div class="workspace-intro"><span class="evidence-label">证据 → 回答 → 确认</span><h1 id="workspace-heading">让答案有出处，<br>让操作可确认。</h1><p>从你的资料中寻找线索，再决定下一步。</p></div>
       <div class="mode-note" id="mode-note"><span class="note-dot" aria-hidden="true"></span><p>演示模式按固定规则检索与编排，不是大模型推理。</p></div>
+      <div class="conversation-context"><strong id="conversation-title">新会话</strong><span id="turn-count" class="muted">0 轮</span><p class="muted">同一会话保留问答与轨迹；本地模型可使用最近 6 轮上下文。</p></div>
       <form id="question-form" class="question-box">
         <label for="question">你想了解什么？</label>
         <textarea id="question" rows="3" maxlength="2000" required placeholder="例如：工具调用有哪些安全边界？"></textarea>
@@ -33,6 +36,7 @@
         <div class="question-actions"><span id="question-count">0 / 2000</span><button id="ask-button" class="button primary" type="submit">检索并回答 <span aria-hidden="true">↗</span></button></div>
       </form>
       <p id="global-status" class="global-status" role="status"></p>
+      <ol id="turns" class="turn-list" aria-label="当前会话问答"></ol>
       <section class="answer-panel panel" aria-labelledby="answer-heading"><div class="section-top"><h2 id="answer-heading">回答与证据</h2><span id="run-meta" class="muted"></span></div><div id="answer" class="answer-text" aria-live="polite"><div class="empty-answer"><span aria-hidden="true">[ ]</span><p>先提出一个问题</p><small>检索结果、原文出处与执行步骤会显示在这里。</small></div></div><div id="citations" class="citations"></div></section>
     </section>
     <aside class="activity-column" aria-label="执行与任务">
