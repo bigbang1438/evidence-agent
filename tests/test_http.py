@@ -76,7 +76,7 @@ def test_import_run_and_approval_complete_normal_flow(tmp_path):
         assert run["citations"][0]["filename"] == "tools.md"
         status, before, _ = request(url, "/api/tasks")
         assert before["items"] == []
-        status, decision, _ = request(url, "/api/approvals/" + run["pending_approval"]["id"], {"approved": True}, headers)
+        status, decision, _ = request(url, "/api/approvals/" + run["pending_approval"]["id"], {"approved": True, "conversation_id": run["conversation_id"]}, headers)
         assert status == 200
         assert decision["task"]["title"] == "检查确认链路"
         assert request(url, "/api/tasks")[1]["items"][0]["title"] == "检查确认链路"
@@ -201,5 +201,34 @@ def test_non_ascii_csrf_header_is_rejected_safely(tmp_path):
         assert status == 403
         assert result["error"]["code"] == "forbidden"
         assert app.store.documents() == []
+
+
+def test_conversation_api_creates_thread_and_persists_two_runs(tmp_path):
+    with running_app(tmp_path) as (url, _):
+        _, headers = state_and_token(url)
+        status, created, _ = request(url, "/api/conversations", {"title": "检索实验"}, headers)
+        assert status == 201
+        thread_id = created["conversation"]["id"]
+        for question in ["首次提问", "第二次提问"]:
+            status, run, _ = request(url, "/api/runs", {"question": question, "conversation_id": thread_id}, headers)
+            assert status == 200
+            assert run["conversation_id"] == thread_id
+        status, thread, _ = request(url, "/api/conversations/" + thread_id)
+        assert status == 200
+        assert [r["question"] for r in thread["runs"]] == ["首次提问", "第二次提问"]
+        assert request(url, "/api/state")[1]["conversations"][0]["turns"] == 2
+
+
+def test_conversation_create_requires_csrf_and_valid_title(tmp_path):
+    with running_app(tmp_path) as (url, app):
+        assert request(url, "/api/conversations", {"title": "未授权"})[0] == 403
+        _, headers = state_and_token(url)
+        assert request(url, "/api/conversations", {"title": "x" * 81}, headers)[0] == 422
+        assert app.store.conversations() == []
+
+
+def test_invalid_conversation_route_cannot_read_arbitrary_files(tmp_path):
+    with running_app(tmp_path) as (url, _):
+        assert request(url, "/api/conversations/../../README.md")[0] == 422
 
 
