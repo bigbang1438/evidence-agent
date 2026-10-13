@@ -39,7 +39,7 @@ class Application:
     def state(self) -> dict[str, Any]:
         documents, tasks = self.store.documents(), self.store.tasks()
         return {"mode": "demo", "ollama_available": self.model is not None, "csrf_token": self.csrf_token,
-                "documents": documents, "tasks": tasks, "pending_approvals": self.store.pending_approvals(),
+                "documents": documents, "tasks": tasks, "pending_approvals": self.store.pending_approvals(), "conversations": self.store.conversations(),
                 "counts": {"documents": len(documents), "chunks": sum(d["chunks"] for d in documents), "tasks": len(tasks)}}
 
     def allow_post(self, address: str) -> bool:
@@ -113,6 +113,13 @@ def make_server(app: Application, port: int = 8788) -> ThreadingHTTPServer:
                 self.send_json(200, {"status": "ok", "ollama_configured": app.model is not None})
             elif self.path == "/api/tasks":
                 self.send_json(200, {"items": app.store.tasks()})
+            elif self.path == "/api/conversations":
+                self.send_json(200, {"items": app.store.conversations()})
+            elif self.path.startswith("/api/conversations/"):
+                try:
+                    self.send_json(200, app.store.conversation(self.path[len("/api/conversations/"):]))
+                except ValidationError as error:
+                    self.fail(422, "validation_error", str(error))
             elif self.path in {"/", "/index.html", "/styles.css", "/app.js"}:
                 name = "index.html" if self.path == "/" else self.path[1:]
                 source = PROJECT_ROOT / "web" / name
@@ -151,19 +158,24 @@ def make_server(app: Application, port: int = 8788) -> ThreadingHTTPServer:
                     validate_fields(body, {"filename", "content"})
                     document = app.store.import_document(body["filename"], body["content"])
                     self.send_json(201, {"document": document}, "/api/documents/" + document["id"])
+                elif self.path == "/api/conversations":
+                    validate_fields(body, {"title"})
+                    item = app.store.create_conversation(body["title"])
+                    self.send_json(201, {"conversation": item}, "/api/conversations/" + item["id"])
                 elif self.path == "/api/runs":
-                    validate_fields(body, {"question"}, {"mode", "draft_task_title"})
+                    validate_fields(body, {"question"}, {"mode", "draft_task_title", "conversation_id"})
                     if not app.run_lock.acquire(blocking=False):
                         self.fail(503, "busy", "已有请求正在执行，请完成后再试。")
                         return
                     try:
-                        result = app.agent.run(body["question"], body.get("draft_task_title"), body.get("mode", "demo"))
+                        result = app.agent.run(body["question"], body.get("draft_task_title"), body.get("mode", "demo"), body.get("conversation_id"))
                         self.send_json(200, result)
                     finally:
                         app.run_lock.release()
                 elif self.path.startswith("/api/approvals/"):
-                    validate_fields(body, {"approved"})
-                    result = app.store.resolve_approval(self.path[len("/api/approvals/"):], body["approved"])
+                    validate_fields(body, {"approved", "conversation_id"})
+                    app.store.conversation(body["conversation_id"])
+                    result = app.store.resolve_approval(self.path[len("/api/approvals/"):], body["approved"], body["conversation_id"])
                     self.send_json(200, result)
                 else:
                     self.fail(404, "not_found", "接口不存在。")
