@@ -71,3 +71,21 @@ def test_missing_message_is_rejected_instead_of_used_as_answer():
         with pytest.raises(ModelError):
             OllamaAdapter(url, "test-model").answer("question", [], timeout=2)
 
+
+def test_chat_accepts_tool_calls_and_serializes_tools_with_tool_feedback():
+    reply = {"message": {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "knowledge_search", "arguments": {"query": "审批"}}}]}, "done": True}
+    with ollama_stub(reply) as (url, observed):
+        from evidence_agent.loop import TOOLS
+        message = OllamaAdapter(url, "test-model").chat([{"role": "user", "content": "审批"}, {"role": "tool", "tool_name": "knowledge_search", "content": "[]"}], TOOLS, timeout=2)
+        assert message["tool_calls"][0]["function"]["arguments"] == {"query": "审批"}
+        assert observed[0][1]["tools"][0]["function"]["name"] == "knowledge_search"
+        assert observed[0][1]["messages"][1]["tool_name"] == "knowledge_search"
+        assert observed[0][1]["stream"] is False
+
+
+@pytest.mark.parametrize("message", [{"content": "", "tool_calls": "not a list"}, {"content": "", "tool_calls": [{"function": []}]}, {"content": "", "tool_calls": [{"function": {"name": "x", "arguments": "{}"}}]}])
+def test_chat_rejects_malformed_tool_payloads(message):
+    with ollama_stub({"message": message, "done": True}) as (url, _):
+        with pytest.raises(ModelError):
+            OllamaAdapter(url, "test-model").chat([{"role": "user", "content": "x"}], [], timeout=2)
+
