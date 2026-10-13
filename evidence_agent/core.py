@@ -5,6 +5,7 @@ from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import math
+import json
 from pathlib import Path
 import re
 import sqlite3
@@ -108,7 +109,17 @@ class EvidenceStore:
                     id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL,
                     approval_id TEXT UNIQUE
                 );
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS runs (
+                    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id),
+                    question TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL
+                );
             """)
+            # Additive local SQLite migration; keep old rows, no destructive rewrite.
+            if "conversation_id" not in {row["name"] for row in db.execute("PRAGMA table_info(approvals)")}:
+                db.execute("ALTER TABLE approvals ADD COLUMN conversation_id TEXT REFERENCES conversations(id)")
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -159,11 +170,12 @@ class EvidenceStore:
         if type(limit) is not int or not 1 <= limit <= 5:
             raise ValidationError("检索数量需为 1–5。")
         query_terms = set(tokenize(query))
+        strong_terms = {term for term in query_terms if len(term) > 1 or re.fullmatch(r"[a-z0-9_]+", term)}
         if not query_terms:
             return []
         with self.connection() as db:
             rows = [dict(row) for row in db.execute("""
-                SELECT c.document_id, d.filename, c.text, c.line_start, c.line_end
+                SELECT c.id AS chunk_id, c.document_id, d.filename, c.text, c.line_start, c.line_end
                 FROM chunks c JOIN documents d ON d.id=c.document_id ORDER BY c.id
             """)]
         if not rows:
@@ -174,6 +186,8 @@ class EvidenceStore:
         doc_frequencies = Counter(term for freq in frequencies for term in freq if term in query_terms)
         ranked = []
         for row, freq, length in zip(rows, frequencies, lengths):
+            if strong_terms and not any(freq[term] for term in strong_terms):
+                continue
             score = 0.0
             for term in query_terms:
                 tf = freq[term]
@@ -181,7 +195,8 @@ class EvidenceStore:
                     continue
                 df = doc_frequencies[term]
                 idf = math.log(1 + (len(rows) - df + 0.5) / (df + 0.5))
-                score += idf * tf * 2.5 / (tf + 1.5 * (0.25 + 0.75 * length / average_length))
+                weight = 0.15 if len(term) == 1 and re.fullmatch(r"[\u3400-\u9fff]", term) else 1.0
+                score += weight * idf * tf * 2.5 / (tf + 1.5 * (0.25 + 0.75 * length / average_length))
             if score > 0:
                 ranked.append({**row, "score": round(score, 6)})
         return sorted(ranked, key=lambda row: row["score"], reverse=True)[:limit]
@@ -190,17 +205,60 @@ class EvidenceStore:
         with self.connection() as db:
             return [dict(row) for row in db.execute("SELECT id, title, created_at FROM tasks ORDER BY created_at DESC, rowid DESC LIMIT 100")]
 
+    def create_conversation(self, title: str = "新会话") -> dict[str, Any]:
+        title = bounded_text(title, "会话标题", 80)
+        item = {"id": uuid4().hex, "title": title, "created_at": now()}
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("SELECT COUNT(*) FROM conversations").fetchone()[0] >= 100:
+                raise ValidationError("最多保存 100 个会话；请使用新的数据目录。")
+            db.execute("INSERT INTO conversations VALUES (?, ?, ?)", tuple(item.values()))
+        return item
+
+    def conversations(self) -> list[dict[str, Any]]:
+        with self.connection() as db:
+            return [dict(row) for row in db.execute("SELECT c.*, COUNT(r.id) AS turns FROM conversations c LEFT JOIN runs r ON r.conversation_id=c.id GROUP BY c.id ORDER BY c.rowid DESC")]
+
+    def conversation(self, conversation_id: str) -> dict[str, Any]:
+        if not isinstance(conversation_id, str) or not re.fullmatch(r"[a-f0-9]{32}", conversation_id):
+            raise ValidationError("会话编号无效。")
+        with self.connection() as db:
+            row = db.execute("SELECT * FROM conversations WHERE id=?", (conversation_id,)).fetchone()
+            if row is None:
+                raise ValidationError("会话不存在。")
+            runs = [{**json.loads(r["result"]), "question": r["question"], "created_at": r["created_at"]} for r in db.execute("SELECT * FROM runs WHERE conversation_id=? ORDER BY rowid", (conversation_id,))]
+        return {**dict(row), "runs": runs}
+
+    def save_run(self, conversation_id: str, question: str, result: dict[str, Any]) -> None:
+        with self.connection() as db:
+            db.execute("INSERT INTO runs VALUES (?, ?, ?, ?, ?)", (result["id"], conversation_id, question, json.dumps(result, ensure_ascii=False), now()))
+
+    def history(self, conversation_id: str) -> list[dict[str, str]]:
+        """Last six completed turns; raw tool traces are not replayed as instructions."""
+        messages: list[dict[str, str]] = []
+        remaining = 12000
+        for run in reversed(self.conversation(conversation_id)["runs"][-6:]):
+            pair = [{"role": "user", "content": run["question"]}, {"role": "assistant", "content": run["answer"][:4000]}]
+            length = sum(len(m["content"]) for m in pair)
+            if length > remaining:
+                break
+            remaining -= length
+            messages[0:0] = pair
+        return messages
+
     def pending_approvals(self) -> list[dict[str, Any]]:
         with self.connection() as db:
-            return [dict(row) for row in db.execute("SELECT id, title, created_at FROM approvals WHERE status='pending' ORDER BY rowid DESC LIMIT 100")]
+            return [dict(row) for row in db.execute("SELECT id, title, created_at, conversation_id FROM approvals WHERE status='pending' ORDER BY rowid DESC LIMIT 100")]
 
-    def propose_task(self, title: str) -> dict[str, Any]:
+    def propose_task(self, title: str, conversation_id: str | None = None) -> dict[str, Any]:
         title = bounded_text(title, "任务标题", 120)
-        approval = {"id": uuid4().hex, "title": title, "created_at": now()}
+        if conversation_id is not None:
+            self.conversation(conversation_id)
+        approval = {"id": uuid4().hex, "title": title, "created_at": now(), "conversation_id": conversation_id}
         with self.connection() as db:
             if db.execute("SELECT COUNT(*) FROM approvals WHERE status='pending'").fetchone()[0] >= 100:
                 raise ValidationError("待确认任务已达 100 条，请先处理现有任务。")
-            db.execute("INSERT INTO approvals (id, title, created_at) VALUES (?, ?, ?)", tuple(approval.values()))
+            db.execute("INSERT INTO approvals (id, title, created_at, conversation_id) VALUES (?, ?, ?, ?)", tuple(approval.values()))
         return approval
 
     @staticmethod
@@ -214,7 +272,7 @@ class EvidenceStore:
         with self.connection() as db:
             return self._insert_task(db, title)
 
-    def resolve_approval(self, approval_id: str, approved: bool) -> dict[str, Any]:
+    def resolve_approval(self, approval_id: str, approved: bool, conversation_id: str | None = None) -> dict[str, Any]:
         if not isinstance(approval_id, str) or not re.fullmatch(r"[a-f0-9]{32}", approval_id):
             raise ValidationError("确认编号无效。")
         if type(approved) is not bool:
@@ -224,6 +282,8 @@ class EvidenceStore:
             approval = db.execute("SELECT * FROM approvals WHERE id=? AND status='pending'", (approval_id,)).fetchone()
             if approval is None:
                 raise ValidationError("确认请求不存在或已处理。")
+            if approval["conversation_id"] != conversation_id:
+                raise ValidationError("确认请求不属于当前会话。")
             status = "approved" if approved else "rejected"
             db.execute("UPDATE approvals SET status=? WHERE id=?", (status, approval_id))
             result: dict[str, Any] = {"status": status}
@@ -255,13 +315,13 @@ class ToolRegistry:
 
 
 class Agent:
-    """A deterministic plan; a model may only synthesize retrieved evidence."""
+    """Deterministic free demo and a separately bounded model-driven tool loop."""
 
-    def __init__(self, store: EvidenceStore, max_steps: int = 6, timeout_seconds: float = 20, model: Any = None):
+    def __init__(self, store: EvidenceStore, max_steps: int = 8, timeout_seconds: float = 90, model: Any = None):
         self.store, self.tools = store, ToolRegistry(store)
         self.max_steps, self.timeout_seconds, self.model = max_steps, timeout_seconds, model
 
-    def run(self, question: str, draft_task_title: str | None = None, mode: str = "demo") -> dict[str, Any]:
+    def run(self, question: str, draft_task_title: str | None = None, mode: str = "demo", conversation_id: str | None = None) -> dict[str, Any]:
         question = bounded_text(question, "问题", 2000)
         if not isinstance(mode, str) or mode not in {"demo", "ollama"}:
             raise ValidationError("不支持的运行模式。")
@@ -269,6 +329,16 @@ class Agent:
             raise ValidationError("未配置本地模型，请使用演示模式。")
         if draft_task_title is not None:
             draft_task_title = bounded_text(draft_task_title, "待创建任务", 120)
+        if conversation_id is None:
+            conversation_id = self.store.create_conversation(question[:80])["id"]
+        previous = self.store.conversation(conversation_id)
+        if len(previous["runs"]) >= 50:
+            raise ValidationError("每个会话最多 50 轮，请新建会话。")
+        if mode == "ollama":
+            from .loop import run_model_loop
+            result = run_model_loop(self, question, conversation_id, draft_task_title)
+            self.store.save_run(conversation_id, question, result)
+            return result
         started = time.monotonic()
         steps: list[dict[str, Any]] = []
 
@@ -291,13 +361,8 @@ class Agent:
             tasks = None
         if not citations:
             answer = "未找到匹配资料。请导入相关文档，或使用文档中的关键词重试。"
-        elif mode == "demo":
-            answer = "以下为关键词检索到的原文片段，演示模式未使用大模型生成答案：\n\n" + "\n\n".join(f"[{i}] {item['text']}" for i, item in enumerate(citations, 1))
         else:
-            guard()
-            model_started = time.monotonic()
-            answer = self.model.answer(question, citations, timeout=max(0.1, self.timeout_seconds - (time.monotonic() - started)))
-            steps.append({"index": len(steps) + 1, "tool": "ollama_answer", "status": "success", "duration_ms": round((time.monotonic() - model_started) * 1000, 2), "summary": "根据检索片段生成答案；请核对来源"})
+            answer = "以下为关键词检索到的原文片段，演示模式未使用大模型生成答案：\n\n" + "\n\n".join(f"[{i}] {item['text']}" for i, item in enumerate(citations, 1))
         if tasks is not None:
             answer += f"\n\n当前已确认任务共显示 {len(tasks)} 条。"
         pending = None
@@ -307,6 +372,8 @@ class Agent:
             try:
                 self.tools.invoke("task_create", {"title": draft_task_title})
             except ApprovalRequired:
-                pending = self.store.propose_task(draft_task_title)
+                pending = self.store.propose_task(draft_task_title, conversation_id)
             steps.append({"index": len(steps) + 1, "tool": "task_create", "status": "awaiting_confirmation", "duration_ms": round((time.monotonic() - task_start) * 1000, 2), "summary": "已提出任务，尚未写入任务列表"})
-        return {"id": uuid4().hex, "mode": mode, "answer": answer, "citations": citations, "steps": steps, "pending_approval": pending, "elapsed_ms": round((time.monotonic() - started) * 1000, 2)}
+        result = {"id": uuid4().hex, "conversation_id": conversation_id, "mode": mode, "answer": answer, "citations": citations, "steps": steps, "pending_approval": pending, "elapsed_ms": round((time.monotonic() - started) * 1000, 2)}
+        self.store.save_run(conversation_id, question, result)
+        return result
