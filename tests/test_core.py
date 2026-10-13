@@ -76,10 +76,10 @@ def test_agent_only_proposes_task_and_approval_creates_it_once(store):
     approval = result["pending_approval"]
     assert approval["title"] == "补充工具白名单测试"
     assert store.tasks() == []
-    accepted = store.resolve_approval(approval["id"], approved=True)
+    accepted = store.resolve_approval(approval["id"], approved=True, conversation_id=result["conversation_id"])
     assert accepted["task"]["title"] == "补充工具白名单测试"
     with pytest.raises(ValidationError):
-        store.resolve_approval(approval["id"], approved=True)
+        store.resolve_approval(approval["id"], approved=True, conversation_id=result["conversation_id"])
     assert len(store.tasks()) == 1
 
 
@@ -92,7 +92,7 @@ def test_task_words_in_question_do_not_create_pending_or_written_tasks(store):
 
 def test_rejecting_approval_creates_no_task(store):
     result = Agent(store).run("安全边界", draft_task_title="研究安全边界")
-    resolved = store.resolve_approval(result["pending_approval"]["id"], approved=False)
+    resolved = store.resolve_approval(result["pending_approval"]["id"], approved=False, conversation_id=result["conversation_id"])
     assert resolved["status"] == "rejected"
     assert store.tasks() == []
     assert store.pending_approvals() == []
@@ -183,5 +183,10 @@ def test_import_count_limit_prevents_unbounded_documents(store):
     with pytest.raises(ValidationError):
         store.import_document("extra.txt", "extra")
     assert len(store.documents()) == 30
+
+
+def test_shared_single_chinese_character_does_not_fake_relevant_evidence(store):
+    store.import_document("work.md", "工作任务需要审批。")
+    assert store.search("工伤保险退休政策") == []
 
 
