@@ -1,0 +1,39 @@
+{
+  "name": "engineering-notes-v1-original-24",
+  "documents": {
+    "approval.md": "# 人工确认与幂等\n写工具 task_create 仅产生 pending approval，不立即创建任务。\n独立确认接口在 SQLite 事务中消费确认编号。\n同一审批编号重复提交会被拒绝，已确认任务不会重复写入。\n拒绝审批仅更新状态，不创建任务。",
+    "retrieval.md": "# 词法检索\nBM25 使用词项频率、逆文档频率和片段长度归一化排序。\n中文二元词组与英文单词参与匹配，中文单字符降低权重。\n没有语义向量或 embedding；表达差异较大可能漏召回。\n未检索到证据时拒绝生成知识结论。",
+    "conversation.md": "# 多轮会话\nSQLite 持久化保存会话、用户问题、回答与工具执行轨迹。\n后续提问只带入当前会话最近六轮已完成的问答。\n历史上下文最多一万二千字符，不会跨会话混入。\n模型可结合上一轮上下文改写检索关键词。",
+    "loop.md": "# 模型工具循环\nOllama chat 返回 tool_calls，由服务器白名单分派执行。\n工具 observation 反馈给模型，模型再次规划或给出回答。\n模型轮次与工具调用共同计入八步骤预算。\n时间预算超限后不再执行新工具，HTTP 请求有独立超时。",
+    "import.md": "# 文档导入\n知识库接受 UTF-8 编码的 Markdown 和 TXT 文件。\n文件名不允许路径遍历，用户文件名不拼接磁盘路径。\n单个文档最大 256 KiB，总量不超过 1 MiB、30 文件。\n文本按不超过六百字符切分，并保留原始行号。",
+    "http.md": "# HTTP 安全\n服务仅绑定 loopback 127.0.0.1，并检查 Host 防止 DNS rebinding。\n写接口验证同源 Origin 和 CSRF token，跨站请求拒绝。\n每分钟最多六十次写请求，同一时刻仅允许一个 Agent 执行。\n严格 CSP 禁止内联脚本，前端使用 textContent 防止 HTML 注入。",
+    "storage.md": "# 持久化与并发\nSQLite WAL 允许读写并发，BEGIN IMMEDIATE 提前取得写锁。\n任务创建和审批消费在同一事务内保证原子性。\n参数化 SQL 避免拼接用户输入，数据库有外键与唯一约束。\n重启服务可恢复知识库、已确认任务与会话历史。",
+    "citation.md": "# 来源与评测\n检索结果含 filename、chunk_id、line_start、line_end。\n回答使用方括号编号关联真实检索片段，不存在的编号被拦截。\nRecall@k 衡量黄金片段被召回比例，MRR 衡量首个相关结果的倒数排名。\n原文可追溯覆盖率仅验证引用文本及行号一致，不能证明问答语义准确。"
+  },
+  "questions": [
+    {"id":"q01","question":"task_create 会直接创建任务吗？","gold":["approval.md:1-5"]},
+    {"id":"q02","question":"审批编号重复提交如何处理？","gold":["approval.md:1-5"]},
+    {"id":"q03","question":"拒绝审批会不会生成任务？","gold":["approval.md:1-5"]},
+    {"id":"q04","question":"BM25 排序考虑哪些因素？","gold":["retrieval.md:1-5"]},
+    {"id":"q05","question":"中文关键词分词如何处理？","gold":["retrieval.md:1-5"]},
+    {"id":"q06","question":"这个检索系统有没有 embedding？","gold":["retrieval.md:1-5"]},
+    {"id":"q07","question":"新一轮问答能看到多少历史？","gold":["conversation.md:1-5"]},
+    {"id":"q08","question":"模型如何处理承接上一轮的问题？","gold":["conversation.md:1-5"]},
+    {"id":"q09","question":"会话历史重启后还在吗？","gold":["conversation.md:1-5","storage.md:1-5"]},
+    {"id":"q10","question":"tool_calls 后怎样再次规划？","gold":["loop.md:1-5"]},
+    {"id":"q11","question":"八步骤预算怎样计算？","gold":["loop.md:1-5"]},
+    {"id":"q12","question":"模型执行超时如何停止？","gold":["loop.md:1-5"]},
+    {"id":"q13","question":"导入支持哪些格式和编码？","gold":["import.md:1-5"]},
+    {"id":"q14","question":"知识库的 256 KiB 和 1 MiB 限制是什么？","gold":["import.md:1-5"]},
+    {"id":"q15","question":"文档路径遍历有哪些防护？","gold":["import.md:1-5"]},
+    {"id":"q16","question":"如何防止 DNS rebinding 和跨站写入？","gold":["http.md:1-5"]},
+    {"id":"q17","question":"并发执行与请求频率限制分别是多少？","gold":["http.md:1-5"]},
+    {"id":"q18","question":"审批原子性由什么事务保证？","gold":["approval.md:1-5","storage.md:1-5"]},
+    {"id":"q19","question":"不存在的引用编号会怎样？","gold":["citation.md:1-5"]},
+    {"id":"q20","question":"Recall 和 MRR 是否代表问答准确率？","gold":["citation.md:1-5"]},
+    {"id":"q21","question":"mars rover landing coordinates","gold":[]},
+    {"id":"q22","question":"quantum entanglement experiments","gold":[]},
+    {"id":"q23","question":"工伤保险退休政策","gold":[]},
+    {"id":"q24","question":"樱花花期园艺施肥","gold":[]}
+  ]
+}
