@@ -1,0 +1,267 @@
+{
+  "dataset": "engineering-notes-v1-original-24",
+  "questions": 24,
+  "answerable": 20,
+  "negative_questions": 4,
+  "metrics": {
+    "recall_at_1": 0.9,
+    "recall_at_3": 1.0,
+    "mrr": 0.975,
+    "source_traceability": 1.0,
+    "negative_abstention_rate": 1.0
+  },
+  "retrieved_chunks": 43,
+  "verified_source_chunks": 43,
+  "scope": "原创小型固定词法检索集；source_traceability 仅检查片段及行号可溯源，不代表结论正确、引用语义支持、LLM问答准确率或泛化表现。",
+  "cases": [
+    {
+      "id": "q01",
+      "question": "task_create 会直接创建任务吗？",
+      "gold": [
+        "approval.md:1-5"
+      ],
+      "ranked": [
+        "approval.md:1-5",
+        "storage.md:1-5"
+      ]
+    },
+    {
+      "id": "q02",
+      "question": "审批编号重复提交如何处理？",
+      "gold": [
+        "approval.md:1-5"
+      ],
+      "ranked": [
+        "approval.md:1-5",
+        "citation.md:1-5",
+        "storage.md:1-5"
+      ]
+    },
+    {
+      "id": "q03",
+      "question": "拒绝审批会不会生成任务？",
+      "gold": [
+        "approval.md:1-5"
+      ],
+      "ranked": [
+        "approval.md:1-5",
+        "storage.md:1-5",
+        "retrieval.md:1-5"
+      ]
+    },
+    {
+      "id": "q04",
+      "question": "BM25 排序考虑哪些因素？",
+      "gold": [
+        "retrieval.md:1-5"
+      ],
+      "ranked": [
+        "retrieval.md:1-5"
+      ]
+    },
+    {
+      "id": "q05",
+      "question": "中文关键词分词如何处理？",
+      "gold": [
+        "retrieval.md:1-5"
+      ],
+      "ranked": [
+        "conversation.md:1-5",
+        "retrieval.md:1-5"
+      ]
+    },
+    {
+      "id": "q06",
+      "question": "这个检索系统有没有 embedding？",
+      "gold": [
+        "retrieval.md:1-5"
+      ],
+      "ranked": [
+        "retrieval.md:1-5",
+        "citation.md:1-5",
+        "conversation.md:1-5"
+      ]
+    },
+    {
+      "id": "q07",
+      "question": "新一轮问答能看到多少历史？",
+      "gold": [
+        "conversation.md:1-5"
+      ],
+      "ranked": [
+        "conversation.md:1-5",
+        "citation.md:1-5",
+        "storage.md:1-5"
+      ]
+    },
+    {
+      "id": "q08",
+      "question": "模型如何处理承接上一轮的问题？",
+      "gold": [
+        "conversation.md:1-5"
+      ],
+      "ranked": [
+        "conversation.md:1-5",
+        "loop.md:1-5"
+      ]
+    },
+    {
+      "id": "q09",
+      "question": "会话历史重启后还在吗？",
+      "gold": [
+        "conversation.md:1-5",
+        "storage.md:1-5"
+      ],
+      "ranked": [
+        "storage.md:1-5",
+        "conversation.md:1-5"
+      ]
+    },
+    {
+      "id": "q10",
+      "question": "tool_calls 后怎样再次规划？",
+      "gold": [
+        "loop.md:1-5"
+      ],
+      "ranked": [
+        "loop.md:1-5"
+      ]
+    },
+    {
+      "id": "q11",
+      "question": "八步骤预算怎样计算？",
+      "gold": [
+        "loop.md:1-5"
+      ],
+      "ranked": [
+        "loop.md:1-5"
+      ]
+    },
+    {
+      "id": "q12",
+      "question": "模型执行超时如何停止？",
+      "gold": [
+        "loop.md:1-5"
+      ],
+      "ranked": [
+        "loop.md:1-5",
+        "conversation.md:1-5",
+        "http.md:1-5"
+      ]
+    },
+    {
+      "id": "q13",
+      "question": "导入支持哪些格式和编码？",
+      "gold": [
+        "import.md:1-5"
+      ],
+      "ranked": [
+        "import.md:1-5"
+      ]
+    },
+    {
+      "id": "q14",
+      "question": "知识库的 256 KiB 和 1 MiB 限制是什么？",
+      "gold": [
+        "import.md:1-5"
+      ],
+      "ranked": [
+        "import.md:1-5",
+        "storage.md:1-5",
+        "http.md:1-5"
+      ]
+    },
+    {
+      "id": "q15",
+      "question": "文档路径遍历有哪些防护？",
+      "gold": [
+        "import.md:1-5"
+      ],
+      "ranked": [
+        "import.md:1-5",
+        "retrieval.md:1-5"
+      ]
+    },
+    {
+      "id": "q16",
+      "question": "如何防止 DNS rebinding 和跨站写入？",
+      "gold": [
+        "http.md:1-5"
+      ],
+      "ranked": [
+        "http.md:1-5",
+        "approval.md:1-5"
+      ]
+    },
+    {
+      "id": "q17",
+      "question": "并发执行与请求频率限制分别是多少？",
+      "gold": [
+        "http.md:1-5"
+      ],
+      "ranked": [
+        "http.md:1-5",
+        "loop.md:1-5",
+        "retrieval.md:1-5"
+      ]
+    },
+    {
+      "id": "q18",
+      "question": "审批原子性由什么事务保证？",
+      "gold": [
+        "approval.md:1-5",
+        "storage.md:1-5"
+      ],
+      "ranked": [
+        "storage.md:1-5",
+        "approval.md:1-5"
+      ]
+    },
+    {
+      "id": "q19",
+      "question": "不存在的引用编号会怎样？",
+      "gold": [
+        "citation.md:1-5"
+      ],
+      "ranked": [
+        "citation.md:1-5",
+        "approval.md:1-5"
+      ]
+    },
+    {
+      "id": "q20",
+      "question": "Recall 和 MRR 是否代表问答准确率？",
+      "gold": [
+        "citation.md:1-5"
+      ],
+      "ranked": [
+        "citation.md:1-5",
+        "conversation.md:1-5"
+      ]
+    },
+    {
+      "id": "q21",
+      "question": "mars rover landing coordinates",
+      "gold": [],
+      "ranked": []
+    },
+    {
+      "id": "q22",
+      "question": "quantum entanglement experiments",
+      "gold": [],
+      "ranked": []
+    },
+    {
+      "id": "q23",
+      "question": "工伤保险退休政策",
+      "gold": [],
+      "ranked": []
+    },
+    {
+      "id": "q24",
+      "question": "樱花花期园艺施肥",
+      "gold": [],
+      "ranked": []
+    }
+  ]
+}
